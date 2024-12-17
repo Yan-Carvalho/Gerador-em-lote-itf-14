@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Generate and Download Barcodes</title>
-    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+    <title>Gerador e Baixador de Códigos ITF-14</title>
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.2.0/jszip.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
     <style>
@@ -24,26 +24,10 @@
             width: 100%;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
         }
-        header h1 {
-            margin: 0;
-            font-size: 24px;
-        }
         .controls {
-            margin: 20px 0;
+            margin: 20px;
             display: flex;
             gap: 10px;
-        }
-        .controls button, .controls input[type="file"] {
-            padding: 10px 20px;
-            font-size: 16px;
-            cursor: pointer;
-            border: none;
-            border-radius: 5px;
-            background-color: #4CAF50;
-            color: white;
-        }
-        .controls button:hover, .controls input[type="file"]:hover {
-            background-color: #45a049;
         }
         .barcode-container {
             display: grid;
@@ -59,30 +43,33 @@
             border-radius: 5px;
             background-color: #f9f9f9;
         }
-        .barcode {
-            width: 80%;
-            height: auto;
-        }
-        .barcode-number {
-            margin-top: -5px;
-            font-size: 20px;
-            font-family: Arial, sans-serif;
-        }
     </style>
 </head>
 <body>
     <header>
-        <h1>Gerador e Baixador de Códigos de Barras</h1>
+        <h1>Gerador e Baixador de Códigos ITF-14</h1>
     </header>
     <div class="controls">
-        <input type="file" id="file-input" accept=".txt" />
-        <button id="generate-button">Gerar Códigos de Barras</button>
-        <button id="download-button">Baixar Todos os Códigos de Barras</button>
-        <button id="delete-button">Deletar</button>
+        <input type="file" id="file-input" accept=".txt">
+        <button id="generate-button">Gerar Códigos</button>
+        <button id="download-button">Baixar Todos</button>
+        <button id="delete-button">Limpar</button>
     </div>
     <div id="barcode-container" class="barcode-container"></div>
 
     <script>
+        // Função para calcular o checksum ITF-14
+        function calculateITF14Checksum(number) {
+            let sum = 0;
+            for (let i = 0; i < number.length; i++) {
+                const digit = parseInt(number[i], 10);
+                sum += i % 2 === 0 ? digit * 3 : digit;
+            }
+            const remainder = sum % 10;
+            return remainder === 0 ? 0 : 10 - remainder;
+        }
+
+        // Geração dos códigos de barras
         document.getElementById("generate-button").addEventListener("click", function() {
             const fileInput = document.getElementById("file-input").files[0];
             if (!fileInput) return;
@@ -94,26 +81,24 @@
                 container.innerHTML = "";
 
                 lines.forEach((line) => {
+                    const checksum = calculateITF14Checksum(line + "0");
+                    const itf14Number = line + "0" + checksum;
+
                     const wrapper = document.createElement("div");
                     wrapper.className = "barcode-wrapper";
 
                     const canvas = document.createElement("canvas");
                     canvas.className = "barcode";
-                    canvas.setAttribute("data-number", line);
-                    JsBarcode(canvas, line, {
-                        format: "ITF",
+                    canvas.setAttribute("data-number", itf14Number); // Armazena o número completo
+                    JsBarcode(canvas, itf14Number, {
+                        format: "ITF14",
                         displayValue: true,
-                        fontSize: 15,
+                        text: line, // Mostra apenas os 12 dígitos originais
+                        fontSize: 16,
                         width: 3,
                         height: 100,
-                        fontOptions: "bold",
-                        textMargin: 5,
-                        font: "Arial"
+                        guardBars: true
                     });
-
-                    const number = document.createElement("div");
-                    number.textContent = line;
-                    number.className = "barcode-number";
 
                     wrapper.appendChild(canvas);
                     container.appendChild(wrapper);
@@ -122,26 +107,34 @@
             reader.readAsText(fileInput);
         });
 
+        // Download dos códigos como PNG em um ZIP
         document.getElementById("download-button").addEventListener("click", function() {
-            const barcodes = document.querySelectorAll(".barcode");
+            const barcodes = document.querySelectorAll("canvas.barcode");
             if (barcodes.length > 0) {
                 const zip = new JSZip();
-                const folder = zip.folder("barcode-images");
+                const folder = zip.folder("itf14-barcodes");
+
+                let completed = 0;
 
                 barcodes.forEach((canvas) => {
-                    const barcodeNumber = canvas.getAttribute("data-number");
-                    const pngFile = canvas.toDataURL("image/png").split(",")[1];
-                    folder.file(`${barcodeNumber}.png`, pngFile, { base64: true });
-                });
+                    const number = canvas.getAttribute("data-number").slice(0, 12); // Apenas 12 dígitos originais
+                    const pngData = canvas.toDataURL("image/png").split(",")[1];
+                    folder.file(`${number}.png`, pngData, { base64: true });
+                    completed++;
 
-                zip.generateAsync({ type: "blob" }).then(function(content) {
-                    saveAs(content, "barcodes.zip");
+                    // Quando todos os arquivos forem processados, gera o ZIP
+                    if (completed === barcodes.length) {
+                        zip.generateAsync({ type: "blob" }).then(function(content) {
+                            saveAs(content, "barcodes-itf14.zip");
+                        });
+                    }
                 });
             } else {
-                alert("Nenhum código de barras gerado para download.");
+                alert("Nenhum código de barras gerado.");
             }
         });
 
+        // Limpar os códigos
         document.getElementById("delete-button").addEventListener("click", function() {
             document.getElementById("file-input").value = "";
             document.getElementById("barcode-container").innerHTML = "";
